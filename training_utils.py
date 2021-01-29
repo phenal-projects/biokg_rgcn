@@ -57,7 +57,7 @@ def logloss(pos_scores, neg_scores, adversarial_temperature=1.0):
         F.softmax(neg_scores * adversarial_temperature, dim=0).detach()
         * F.logsigmoid(-neg_scores)
     ).sum()
-    return (pos_loss + neg_loss) / float(len(pos_scores) + len(neg_scores))
+    return (pos_loss + neg_loss), float(len(pos_scores) + len(neg_scores))
 
 
 def train_step(
@@ -80,6 +80,7 @@ def train_step(
     z = model.encode(train_pos_adj)
 
     loss = 0
+    total_edges = 0.0
     for edge_type in edge_types_to_train:
         pos_edges = torch.stack(
             (
@@ -110,8 +111,9 @@ def train_step(
             neg_scores = model.decoder(
                 z, neg_edges.to(device), edge_type, sigmoid=False
             )
-
-            loss += logloss(pos_scores, neg_scores)
+            l, w = logloss(pos_scores, neg_scores)
+            loss += l
+            total_edges += w
     loss.backward()
 
     nn.utils.clip_grad_norm_(model.parameters(), 1)
@@ -122,4 +124,4 @@ def train_step(
         auc, ap = test(
             z, model.decoder, 0, pos_val.to(device), neg_val.to(device),
         )
-    return model, auc, ap, loss.item() / len(edge_types_to_train)
+    return model, auc, ap, loss.item() / total_edges
