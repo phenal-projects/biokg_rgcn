@@ -133,10 +133,10 @@ encoder = models.RGCNStack(
 )
 decoder = models.DistMult(args.size1 + args.size2 + args.size3, num_relations)
 model = gnn.GAE(encoder, decoder).to(args.device)
-optimizer = opt.SGD(model.parameters(), args.lr, momentum=0.9)
+optimizer = opt.Adam(model.parameters(), args.lr)
 
 best_loss = 0.5
-best_auc = 0.7
+best_auc = 0.6
 
 for epoch in range(args.epochs):
     model, auc, ap, loss = train_step(
