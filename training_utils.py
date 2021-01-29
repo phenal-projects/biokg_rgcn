@@ -106,7 +106,7 @@ def train_step(
                 pos_edges,
                 *possible_head_nodes,
                 *possible_tail_nodes,
-                neg_sample_size
+                int(len(pos_edges[0]) * neg_sample_size)
             )
             neg_scores = model.decoder(
                 z, neg_edges.to(device), edge_type, sigmoid=False

@@ -33,10 +33,7 @@ parser.add_argument(
     default=64,
 )
 parser.add_argument(
-    "--negsize",
-    help="set the size of the negative sample",
-    type=int,
-    default=64,
+    "--negsize", help="negsize/possize", type=float, default=1,
 )
 parser.add_argument(
     "--adv",
