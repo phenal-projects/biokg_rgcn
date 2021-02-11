@@ -10,7 +10,8 @@ class RGCNStack(nn.Module):
         self,
         initial_size,
         output_size,
-        middle_size,
+        middle_size_1,
+        middle_size_2,
         num_nodes,
         num_relations,
         *args,
@@ -22,11 +23,14 @@ class RGCNStack(nn.Module):
         )
         glorot_orthogonal(self.emb, 1)
         self.conv1 = gnn.RGCNConv(
-            initial_size, middle_size, num_relations, num_bases=12
+            initial_size, middle_size_1, num_relations, num_bases=12
         )
         self.conv2 = gnn.RGCNConv(
-            middle_size,
-            output_size - middle_size - initial_size,
+            middle_size_1, middle_size_2, num_relations, num_bases=12,
+        )
+        self.conv3 = gnn.RGCNConv(
+            middle_size_2,
+            output_size - middle_size_2 - middle_size_1 - initial_size,
             num_relations,
             num_bases=12,
         )
@@ -36,9 +40,10 @@ class RGCNStack(nn.Module):
         """Calculates embeddings"""
         x1 = F.relu(self.conv1(self.emb, adj_t, edge_types))
         x2 = F.relu(self.conv2(x1, adj_t, edge_types))
-        x2 = torch.cat((x2, x1, self.emb), 1)
-        x2 = self.drop(x2)
-        return x2
+        x3 = F.relu(self.conv3(x2, adj_t, edge_types))
+        x3 = torch.cat((x3, x2, x1, self.emb), 1)
+        x3 = self.drop(x3)
+        return x3
 
 
 class DistMult(nn.Module):
