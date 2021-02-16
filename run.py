@@ -155,7 +155,9 @@ encoder = models.RGCNStack(
     num_nodes,
     num_relations,
 )
-decoder = models.DistMult(args.size1 + args.size2 + args.size3, num_relations)
+decoder = models.DistMult(
+    args.size1 + args.size2 + args.size3 + args.size4, num_relations
+)
 model = gnn.GAE(encoder, decoder).to(args.device)
 optimizer = opt.Adam(model.parameters(), args.lr, weight_decay=args.wd)
 
