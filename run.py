@@ -76,12 +76,6 @@ parser.add_argument(
     default=0,
 )
 parser.add_argument(
-    "--mlflow_host",
-    help="URI of the mlflow instance for logging",
-    type=str,
-    default="http://localhost:12345",
-)
-parser.add_argument(
     "--mlflow",
     help="URI of the mlflow instance for logging",
     type=str,
@@ -99,7 +93,7 @@ args = parser.parse_args()
 # Reproducibility
 torch.set_deterministic(True)
 torch.manual_seed(args.seed)
-mlflow.set_tracking_uri(args.mlflow_host)
+mlflow.set_tracking_uri(args.mlflow)
 
 # Load the dataset and split edges
 if args.data == "biokg":
@@ -243,8 +237,10 @@ with mlflow.start_run():
         nn.ReLU(),
         nn.Linear(128, 13),
         nn.ReLU(),
-    )
-    cl_head_2 = nn.Sequential(nn.Linear(16, 32), nn.ReLU(), nn.Linear(32, 1))
+    ).to(args.device)
+    cl_head_2 = nn.Sequential(
+        nn.Linear(16, 32), nn.ReLU(), nn.Linear(32, 1),
+    ).to(args.device)
     optimizer = opt.Adam(
         chain(
             model.parameters(), cl_head_1.parameters(), cl_head_2.parameters()
@@ -257,18 +253,18 @@ with mlflow.start_run():
         z = model.encode(train_adj_t.to(args.device))
         embs_protein = torch.zeros(
             (len(train), args.size1 + args.size2 + args.size3 + args.size4)
-        )
+        ).to(args.device)
         embs_disease = torch.zeros(
             (len(train), args.size1 + args.size2 + args.size3 + args.size4)
-        )
-        min_mean_max = torch.zeros((len(train)), 3)
+        ).to(args.device)
+        min_mean_max = torch.zeros((len(train)), 3).to(args.device)
         neutral_protein = z[
             entity_type_dict["protein"][0] : entity_type_dict["protein"][1]
-        ].mean()
+        ].mean(0)
         neutral_disease = z[
             entity_type_dict["disease"][0] : entity_type_dict["disease"][1]
-        ].mean()
-        for i, idx in train.iterrows():
+        ].mean(0)
+        for i, (_, idx) in enumerate(train.iterrows()):
             if (len(idx["protein"]) > 0) and (len(idx["disease"]) > 0):
                 embs_protein[i] = z[idx["protein"]].mean(0)
                 embs_disease[i] = z[idx["disease"]].mean(0)
@@ -287,7 +283,7 @@ with mlflow.start_run():
                 min_mean_max[i, 2] = 0.0
         z1 = cl_head_1(torch.cat((embs_protein, embs_disease), 1))
         probas = cl_head_2(torch.cat((z1, min_mean_max), 1))
-        loss = ls(probas, train_y.cuda())
+        loss = ls(probas, train_y.to(args.device))
         loss.backward()
         mlflow.log_metric(
             key="ft_loss", value=loss.item(), step=epoch + args.epochs
@@ -296,23 +292,34 @@ with mlflow.start_run():
 
     # Testing
     with torch.no_grad():
+        z = model.encode(train_adj_t.to(args.device))
         for subset in ctop_ds["subset"].unique():
             if subset != "train":
                 test = ctop_ds[ctop_ds["subset"] == subset]
-                embs_protein = torch.zeros((len(test), 512))
-                embs_disease = torch.zeros((len(test), 512))
-                min_mean_max = torch.zeros((len(test)), 3)
+                embs_protein = torch.zeros(
+                    (
+                        len(test),
+                        args.size1 + args.size2 + args.size3 + args.size4,
+                    )
+                ).to(args.device)
+                embs_disease = torch.zeros(
+                    (
+                        len(test),
+                        args.size1 + args.size2 + args.size3 + args.size4,
+                    )
+                ).to(args.device)
+                min_mean_max = torch.zeros((len(test)), 3).to(args.device)
                 neutral_protein = z[
                     entity_type_dict["protein"][0] : entity_type_dict[
                         "protein"
                     ][1]
-                ].mean()
+                ].mean(0)
                 neutral_disease = z[
                     entity_type_dict["disease"][0] : entity_type_dict[
                         "disease"
                     ][1]
-                ].mean()
-                for i, idx in test.iterrows():
+                ].mean(0)
+                for i, (_, idx) in enumerate(test.iterrows()):
                     if (len(idx["protein"]) > 0) and (len(idx["disease"]) > 0):
                         embs_protein[i] = z[idx["protein"]].mean(0)
                         embs_disease[i] = z[idx["disease"]].mean(0)
@@ -331,21 +338,28 @@ with mlflow.start_run():
                         min_mean_max[i, 2] = 0.0
                 z1 = cl_head_1(torch.cat((embs_protein, embs_disease), 1))
                 probas = cl_head_2(torch.cat((z1, min_mean_max), 1))
-                auc, ap = (
-                    roc_auc_score(
-                        test["result"][~test["result"].isna()],
-                        probas.cpu()
-                        .numpy()[~test["result"].isna()]
-                        .reshape(-1),
-                    ),
-                    average_precision_score(
-                        test["result"][~test["result"].isna()],
-                        probas.cpu()
-                        .numpy()[~test["result"].isna()]
-                        .reshape(-1),
-                    ),
-                )
-                mlflow.log_metric(key="ft_auc_{}".format(subset), value=auc)
-                mlflow.log_metric(key="ft_ap_{}".format(subset), value=ap)
-                torch.save(model, "best_auc_ft.pt")
-                mlflow.log_artifact("best_auc_ft.pt")
+                if len(test["result"][~test["result"].isna()]) > 0:
+                    auc, ap = (
+                        roc_auc_score(
+                            test["result"][~test["result"].isna()],
+                            probas.cpu()
+                            .numpy()[~test["result"].isna()]
+                            .reshape(-1),
+                        ),
+                        average_precision_score(
+                            test["result"][~test["result"].isna()],
+                            probas.cpu()
+                            .numpy()[~test["result"].isna()]
+                            .reshape(-1),
+                        ),
+                    )
+                    mlflow.log_metric(
+                        key="ft_auc_{}".format(subset), value=auc
+                    )
+                    mlflow.log_metric(key="ft_ap_{}".format(subset), value=ap)
+torch.save(model, "best_auc_ft.pt")
+torch.save(cl_head_1, "head1.pt")
+torch.save(cl_head_2, "head2.pt")
+mlflow.log_artifact("best_auc_ft.pt")
+mlflow.log_artifact("head1.pt")
+mlflow.log_artifact("head2.pt")

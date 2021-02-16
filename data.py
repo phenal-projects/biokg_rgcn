@@ -147,3 +147,4 @@ def load_dataset(path):
             for x in test_edge["tail_neg"]
         ]
     )
+    return train_edge, valid_edge, test_edge, entity_type_dict
