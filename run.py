@@ -162,7 +162,7 @@ model = gnn.GAE(encoder, decoder).to(args.device)
 optimizer = opt.Adam(model.parameters(), args.lr, weight_decay=args.wd)
 
 best_loss = 0.5
-best_auc = 0.6
+best_auc = 0.0
 
 with mlflow.start_run():
     for epoch in range(args.epochs):
