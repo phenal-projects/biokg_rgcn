@@ -44,9 +44,7 @@ parser.add_argument(
     type=int,
     default=52,
 )
-parser.add_argument(
-    "--negsize", help="negsize/possize", type=float, default=1,
-)
+parser.add_argument("--negsize", help="negsize/possize", type=float, default=1)
 parser.add_argument(
     "--adv",
     help="set the adversarial temperature for the negative part of the loss",
@@ -54,28 +52,22 @@ parser.add_argument(
     default=1.0,
 )
 parser.add_argument(
-    "--lr", help="set the learning rate", type=float, default=0.005,
+    "--lr", help="set the learning rate", type=float, default=0.005
 )
 parser.add_argument(
-    "--wd", help="set the weight decay", type=float, default=0.0001,
+    "--wd", help="set the weight decay", type=float, default=0.0001
 )
 parser.add_argument(
-    "--epochs",
-    help="set the number of epochs to train",
-    type=int,
-    default=400,
+    "--epochs", help="set the number of epochs to train", type=int, default=400
 )
 parser.add_argument(
-    "--device", help="the device to train on", type=str, default="cpu",
+    "--device", help="the device to train on", type=str, default="cpu"
 )
 parser.add_argument(
     "--data",
     help="'biokg' or a path to directory with datasets",
     type=str,
     default="biokg",
-)
-parser.add_argument(
-    "--seed", help="PRNG seed", type=int, default=0,
 )
 parser.add_argument(
     "--target_relation",
@@ -97,7 +89,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--finetuning_dataset",
-    help="a path to a csv file with disease-target pairs for CTOP finetuning",
+    help="a path to a hdf file with disease-target pairs for CTOP finetuning",
     type=str,
     default="None",
 )
@@ -194,7 +186,7 @@ with mlflow.start_run():
         mlflow.log_metric(key="balanced_ap", value=ap, step=epoch)
         mlflow.log_metric(key="loss", value=loss, step=epoch)
     model = torch.load("best_auc.pt")
-    mlflow.log_artifact("best_auc.pt",)
+    mlflow.log_artifact("best_auc.pt")
 
     # Link-prediction validation
     evaluator = Evaluator(name="ogbl-biokg")
@@ -235,11 +227,11 @@ with mlflow.start_run():
                 {"y_pred_pos": scores[:, 0], "y_pred_neg": scores[:, 1:]}
             )
             mlflow.log_metric(
-                key="test_lp_mrr", value=eval_results["mrr_list"].mean(),
+                key="test_lp_mrr", value=eval_results["mrr_list"].mean()
             )
 
     # CTOP validation
-    ctop_ds = pd.read_csv(args.finetuning_dataset)
+    ctop_ds = pd.read_hdf(args.finetuning_dataset, "ctop")
     train = ctop_ds[ctop_ds["subset"] == "train"]
     train_y = torch.tensor(train["result"].values).reshape(-1, 1)
     cl_head_1 = nn.Sequential(
@@ -335,13 +327,19 @@ with mlflow.start_run():
                 probas = cl_head_2(torch.cat((z1, min_mean_max), 1))
                 auc, ap = (
                     roc_auc_score(
-                        test["result"], probas.cpu().numpy().reshape(-1)
+                        test["result"][~test["result"].isna()],
+                        probas.cpu()
+                        .numpy()[~test["result"].isna()]
+                        .reshape(-1),
                     ),
                     average_precision_score(
-                        test["result"], probas.cpu().numpy().reshape(-1)
+                        test["result"][~test["result"].isna()],
+                        probas.cpu()
+                        .numpy()[~test["result"].isna()]
+                        .reshape(-1),
                     ),
                 )
                 mlflow.log_metric(key="ft_auc_{}".format(subset), value=auc)
                 mlflow.log_metric(key="ft_ap_{}".format(subset), value=ap)
                 torch.save(model, "best_auc_ft.pt")
-                mlflow.log_artifact("best_auc_ft.pt",)
+                mlflow.log_artifact("best_auc_ft.pt")
