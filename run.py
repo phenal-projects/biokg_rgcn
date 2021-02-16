@@ -255,8 +255,12 @@ with mlflow.start_run():
     for epoch in range(10):
         optimizer.zero_grad()
         z = model.encode(train_adj_t.to(args.device))
-        embs_protein = torch.zeros((len(train), 512))
-        embs_disease = torch.zeros((len(train), 512))
+        embs_protein = torch.zeros(
+            (len(train), args.size1 + args.size2 + args.size3 + args.size4)
+        )
+        embs_disease = torch.zeros(
+            (len(train), args.size1 + args.size2 + args.size3 + args.size4)
+        )
         min_mean_max = torch.zeros((len(train)), 3)
         neutral_protein = z[
             entity_type_dict["protein"][0] : entity_type_dict["protein"][1]
