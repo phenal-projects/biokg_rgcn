@@ -245,10 +245,10 @@ with mlflow.start_run():
         chain(
             model.parameters(), cl_head_1.parameters(), cl_head_2.parameters()
         ),
-        args.lr / 10.0,
+        args.lr / 5.0,
     )
     ls = nn.BCEWithLogitsLoss()
-    for epoch in range(10):
+    for epoch in range(1000):
         optimizer.zero_grad()
         z = model.encode(train_adj_t.to(args.device))
         embs_protein = torch.zeros(
