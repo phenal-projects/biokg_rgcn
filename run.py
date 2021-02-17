@@ -230,6 +230,8 @@ with mlflow.start_run():
     ctop_ds = pd.read_hdf(args.finetuning_dataset, "ctop")
     train = ctop_ds[ctop_ds["subset"] == "train"]
     train_y = torch.tensor(train["result"].values).reshape(-1, 1)
+    val = ctop_ds[ctop_ds["subset"] == "test"]
+    val_y = val["result"].values.reshape(-1, 1)
     cl_head_1 = nn.Sequential(
         nn.Linear(
             2 * (args.size1 + args.size2 + args.size3 + args.size4), 128
@@ -298,7 +300,65 @@ with mlflow.start_run():
         )
         optimizer.step()
 
+        best_auc = 0.0
+        # validation
+        with torch.no_grad():
+            z = model.encode(train_adj_t.to(args.device))
+            embs_protein = torch.zeros(
+                (len(val), args.size1 + args.size2 + args.size3 + args.size4)
+            ).to(args.device)
+            embs_disease = torch.zeros(
+                (len(val), args.size1 + args.size2 + args.size3 + args.size4)
+            ).to(args.device)
+            min_mean_max = torch.zeros((len(val)), 3).to(args.device)
+            if args.data == "biokg":
+                neutral_protein = z[
+                    entity_type_dict["protein"][0] : entity_type_dict[
+                        "protein"
+                    ][1]
+                ].mean(0)
+                neutral_disease = z[
+                    entity_type_dict["disease"][0] : entity_type_dict[
+                        "disease"
+                    ][1]
+                ].mean(0)
+            else:
+                neutral_protein = z[
+                    entity_type_dict[0][0] : entity_type_dict[0][1]
+                ].mean(0)
+                neutral_disease = z[
+                    entity_type_dict[1][0] : entity_type_dict[1][1]
+                ].mean(0)
+            for i, (_, idx) in enumerate(val.iterrows()):
+                if (len(idx["protein"]) > 0) and (len(idx["disease"]) > 0):
+                    embs_protein[i] = z[idx["protein"]].mean(0)
+                    embs_disease[i] = z[idx["disease"]].mean(0)
+                    prod = torch.LongTensor(
+                        list(product(idx["protein"], idx["disease"]))
+                    ).T
+                    d = model.decoder(z, prod, 0, sigmoid=False)
+                    min_mean_max[i, 0] = d.min()
+                    min_mean_max[i, 1] = d.mean()
+                    min_mean_max[i, 2] = d.max()
+                else:
+                    embs_protein[i] = neutral_protein
+                    embs_disease[i] = neutral_disease
+                    min_mean_max[i, 0] = 0.0
+                    min_mean_max[i, 1] = 0.0
+                    min_mean_max[i, 2] = 0.0
+            z1 = cl_head_1(torch.cat((embs_protein, embs_disease), 1))
+            probas = cl_head_2(torch.cat((z1, min_mean_max), 1))
+            auc = roc_auc_score(
+                val["result"][~val["result"].isna()],
+                probas.cpu().numpy()[~val["result"].isna()].reshape(-1),
+            )
+            mlflow.log_metric(key="ft_auc_val", value=auc)
+            if auc > best_auc:
+                torch.save(model, "best_auc_ft.pt")
+                best_auc = auc
+
     # Testing
+    model = torch.load("best_auc_ft.pt")
     with torch.no_grad():
         z = model.encode(train_adj_t.to(args.device))
         for subset in ctop_ds["subset"].unique():
@@ -373,7 +433,7 @@ with mlflow.start_run():
                         key="ft_auc_{}".format(subset), value=auc
                     )
                     mlflow.log_metric(key="ft_ap_{}".format(subset), value=ap)
-    torch.save(model, "best_auc_ft.pt")
+    torch.save(model, "last.pt")
     torch.save(cl_head_1, "head1.pt")
     torch.save(cl_head_2, "head2.pt")
     mlflow.log_artifact("best_auc_ft.pt")
