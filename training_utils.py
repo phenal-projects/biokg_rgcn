@@ -1,3 +1,4 @@
+from itertools import product
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -125,3 +126,45 @@ def train_step(
             z, model.decoder, 0, pos_val.to(device), neg_val.to(device),
         )
     return model, auc, ap, loss.item() / total_edges
+
+
+def ft_inference(
+    model,
+    cl_head_1,
+    cl_head_2,
+    train_adj_t,
+    protein_bounds,
+    disease_bounds,
+    df,
+    device,
+):
+    z = model.encode(train_adj_t.to(device))
+    embs_protein = torch.zeros((len(df), z.shape[1])).to(device)
+    embs_disease = torch.zeros((len(df), z.shape[1])).to(device)
+    min_mean_max = torch.zeros((len(df)), 3).to(device)
+    neutral_protein = z[protein_bounds[0] : protein_bounds[1]].mean(0)
+    neutral_disease = z[disease_bounds[0] : disease_bounds[1]].mean(0)
+    for i, (_, idx) in enumerate(df.iterrows()):
+        if len(idx["protein"]) > 0:
+            embs_protein[i] = z[idx["protein"]].mean(0)
+        else:
+            embs_protein[i] = neutral_protein
+        if len(idx["disease"]) > 0:
+            embs_disease[i] = z[idx["disease"]].mean(0)
+        else:
+            embs_disease[i] = neutral_disease
+        if (len(idx["protein"]) > 0) and (len(idx["disease"]) > 0):
+            prod = torch.LongTensor(
+                list(product(idx["protein"], idx["disease"]))
+            ).T
+            d = model.decoder(z, prod, 0, sigmoid=False)
+            min_mean_max[i, 0] = d.min()
+            min_mean_max[i, 1] = d.mean()
+            min_mean_max[i, 2] = d.max()
+        else:
+            min_mean_max[i, 0] = 0.0
+            min_mean_max[i, 1] = 0.0
+            min_mean_max[i, 2] = 0.0
+    z1 = cl_head_1(torch.cat((embs_protein, embs_disease), 1))
+    probas = cl_head_2(torch.cat((z1, min_mean_max), 1))
+    return probas

@@ -1,6 +1,6 @@
 import argparse
 from collections import defaultdict
-from itertools import chain, product
+from itertools import chain
 
 import mlflow
 import numpy as np
@@ -15,7 +15,7 @@ from torch_sparse import SparseTensor
 
 import models
 from data import load_biokg, load_dataset
-from training_utils import train_step
+from training_utils import train_step, ft_inference
 
 # Setup parser
 parser = argparse.ArgumentParser()
@@ -229,11 +229,15 @@ with mlflow.start_run():
 
     # CTOP validation
     best_auc = 0.0
+
+    # Data
     ctop_ds = pd.read_hdf(args.finetuning_dataset, "ctop")
     train = ctop_ds[ctop_ds["subset"] == "train"]
     train_y = torch.tensor(train["result"].values).reshape(-1, 1)
     val = ctop_ds[ctop_ds["subset"] == "test"]
     val_y = val["result"].values.reshape(-1, 1)
+
+    # Models
     cl_head_1 = nn.Sequential(
         nn.Linear(
             2 * (args.size1 + args.size2 + args.size3 + args.size4), 128
@@ -245,6 +249,8 @@ with mlflow.start_run():
     cl_head_2 = nn.Sequential(
         nn.Linear(16, 32), nn.ReLU(), nn.Linear(32, 1),
     ).to(args.device)
+
+    # Optim and loss
     optimizer = opt.Adam(
         chain(
             model.parameters(), cl_head_1.parameters(), cl_head_2.parameters()
@@ -252,50 +258,40 @@ with mlflow.start_run():
         args.lr,
     )
     ls = nn.BCEWithLogitsLoss()
+
+    # ids bounds for neutral embeddings
+    if args.data == "biokg":
+        protein_bounds = (
+            entity_type_dict["protein"][0],
+            entity_type_dict["protein"][1],
+        )
+        disease_bounds = (
+            entity_type_dict["disease"][0],
+            entity_type_dict["disease"][1],
+        )
+    else:
+        protein_bounds = (
+            entity_type_dict[0][0],
+            entity_type_dict[0][1],
+        )
+        disease_bounds = (
+            entity_type_dict[1][0],
+            entity_type_dict[1][1],
+        )
+
     for epoch in range(1000):
         model.train()
         optimizer.zero_grad()
-        z = model.encode(train_adj_t.to(args.device))
-        embs_protein = torch.zeros(
-            (len(train), args.size1 + args.size2 + args.size3 + args.size4)
-        ).to(args.device)
-        embs_disease = torch.zeros(
-            (len(train), args.size1 + args.size2 + args.size3 + args.size4)
-        ).to(args.device)
-        min_mean_max = torch.zeros((len(train)), 3).to(args.device)
-        if args.data == "biokg":
-            neutral_protein = z[
-                entity_type_dict["protein"][0] : entity_type_dict["protein"][1]
-            ].mean(0)
-            neutral_disease = z[
-                entity_type_dict["disease"][0] : entity_type_dict["disease"][1]
-            ].mean(0)
-        else:
-            neutral_protein = z[
-                entity_type_dict[0][0] : entity_type_dict[0][1]
-            ].mean(0)
-            neutral_disease = z[
-                entity_type_dict[1][0] : entity_type_dict[1][1]
-            ].mean(0)
-        for i, (_, idx) in enumerate(train.iterrows()):
-            if (len(idx["protein"]) > 0) and (len(idx["disease"]) > 0):
-                embs_protein[i] = z[idx["protein"]].mean(0)
-                embs_disease[i] = z[idx["disease"]].mean(0)
-                prod = torch.LongTensor(
-                    list(product(idx["protein"], idx["disease"]))
-                ).T
-                d = model.decoder(z, prod, 0, sigmoid=False)
-                min_mean_max[i, 0] = d.min()
-                min_mean_max[i, 1] = d.mean()
-                min_mean_max[i, 2] = d.max()
-            else:
-                embs_protein[i] = neutral_protein
-                embs_disease[i] = neutral_disease
-                min_mean_max[i, 0] = 0.0
-                min_mean_max[i, 1] = 0.0
-                min_mean_max[i, 2] = 0.0
-        z1 = cl_head_1(torch.cat((embs_protein, embs_disease), 1))
-        probas = cl_head_2(torch.cat((z1, min_mean_max), 1))
+        probas = ft_inference(
+            model,
+            cl_head_1,
+            cl_head_2,
+            train_adj_t,
+            protein_bounds,
+            disease_bounds,
+            train,
+            args.device,
+        )
         loss = ls(probas, train_y.to(args.device))
         loss.backward()
         mlflow.log_metric(
@@ -306,51 +302,16 @@ with mlflow.start_run():
         # validation
         with torch.no_grad():
             model.eval()
-            z = model.encode(train_adj_t.to(args.device))
-            embs_protein = torch.zeros(
-                (len(val), args.size1 + args.size2 + args.size3 + args.size4)
-            ).to(args.device)
-            embs_disease = torch.zeros(
-                (len(val), args.size1 + args.size2 + args.size3 + args.size4)
-            ).to(args.device)
-            min_mean_max = torch.zeros((len(val)), 3).to(args.device)
-            if args.data == "biokg":
-                neutral_protein = z[
-                    entity_type_dict["protein"][0] : entity_type_dict[
-                        "protein"
-                    ][1]
-                ].mean(0)
-                neutral_disease = z[
-                    entity_type_dict["disease"][0] : entity_type_dict[
-                        "disease"
-                    ][1]
-                ].mean(0)
-            else:
-                neutral_protein = z[
-                    entity_type_dict[0][0] : entity_type_dict[0][1]
-                ].mean(0)
-                neutral_disease = z[
-                    entity_type_dict[1][0] : entity_type_dict[1][1]
-                ].mean(0)
-            for i, (_, idx) in enumerate(val.iterrows()):
-                if (len(idx["protein"]) > 0) and (len(idx["disease"]) > 0):
-                    embs_protein[i] = z[idx["protein"]].mean(0)
-                    embs_disease[i] = z[idx["disease"]].mean(0)
-                    prod = torch.LongTensor(
-                        list(product(idx["protein"], idx["disease"]))
-                    ).T
-                    d = model.decoder(z, prod, 0, sigmoid=False)
-                    min_mean_max[i, 0] = d.min()
-                    min_mean_max[i, 1] = d.mean()
-                    min_mean_max[i, 2] = d.max()
-                else:
-                    embs_protein[i] = neutral_protein
-                    embs_disease[i] = neutral_disease
-                    min_mean_max[i, 0] = 0.0
-                    min_mean_max[i, 1] = 0.0
-                    min_mean_max[i, 2] = 0.0
-            z1 = cl_head_1(torch.cat((embs_protein, embs_disease), 1))
-            probas = cl_head_2(torch.cat((z1, min_mean_max), 1))
+            probas = ft_inference(
+                model,
+                cl_head_1,
+                cl_head_2,
+                train_adj_t,
+                protein_bounds,
+                disease_bounds,
+                val,
+                args.device,
+            )
             auc = roc_auc_score(
                 val["result"][~val["result"].isna()],
                 probas.cpu().numpy()[~val["result"].isna()].reshape(-1),
@@ -365,60 +326,19 @@ with mlflow.start_run():
     # Testing
     model = torch.load("best_auc_ft.pt")
     with torch.no_grad():
-        z = model.encode(train_adj_t.to(args.device))
         for subset in ctop_ds["subset"].unique():
             if subset != "train":
                 test = ctop_ds[ctop_ds["subset"] == subset]
-                embs_protein = torch.zeros(
-                    (
-                        len(test),
-                        args.size1 + args.size2 + args.size3 + args.size4,
-                    )
-                ).to(args.device)
-                embs_disease = torch.zeros(
-                    (
-                        len(test),
-                        args.size1 + args.size2 + args.size3 + args.size4,
-                    )
-                ).to(args.device)
-                min_mean_max = torch.zeros((len(test)), 3).to(args.device)
-                if args.data == "biokg":
-                    neutral_protein = z[
-                        entity_type_dict["protein"][0] : entity_type_dict[
-                            "protein"
-                        ][1]
-                    ].mean(0)
-                    neutral_disease = z[
-                        entity_type_dict["disease"][0] : entity_type_dict[
-                            "disease"
-                        ][1]
-                    ].mean(0)
-                else:
-                    neutral_protein = z[
-                        entity_type_dict[0][0] : entity_type_dict[0][1]
-                    ].mean(0)
-                    neutral_disease = z[
-                        entity_type_dict[1][0] : entity_type_dict[1][1]
-                    ].mean(0)
-                for i, (_, idx) in enumerate(test.iterrows()):
-                    if (len(idx["protein"]) > 0) and (len(idx["disease"]) > 0):
-                        embs_protein[i] = z[idx["protein"]].mean(0)
-                        embs_disease[i] = z[idx["disease"]].mean(0)
-                        prod = torch.LongTensor(
-                            list(product(idx["protein"], idx["disease"]))
-                        ).T
-                        d = model.decoder(z, prod, 0, sigmoid=False)
-                        min_mean_max[i, 0] = d.min()
-                        min_mean_max[i, 1] = d.mean()
-                        min_mean_max[i, 2] = d.max()
-                    else:
-                        embs_protein[i] = neutral_protein
-                        embs_disease[i] = neutral_disease
-                        min_mean_max[i, 0] = 0.0
-                        min_mean_max[i, 1] = 0.0
-                        min_mean_max[i, 2] = 0.0
-                z1 = cl_head_1(torch.cat((embs_protein, embs_disease), 1))
-                probas = cl_head_2(torch.cat((z1, min_mean_max), 1))
+                probas = ft_inference(
+                    model,
+                    cl_head_1,
+                    cl_head_2,
+                    train_adj_t,
+                    protein_bounds,
+                    disease_bounds,
+                    test,
+                    args.device,
+                )
                 if len(test["result"][~test["result"].isna()]) > 0:
                     auc, ap = (
                         roc_auc_score(
@@ -441,6 +361,7 @@ with mlflow.start_run():
     torch.save(model, "last.pt")
     torch.save(cl_head_1, "head1.pt")
     torch.save(cl_head_2, "head2.pt")
+    mlflow.log_artifact("last.pt")
     mlflow.log_artifact("best_auc_ft.pt")
     mlflow.log_artifact("head1.pt")
     mlflow.log_artifact("head2.pt")
