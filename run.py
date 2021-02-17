@@ -187,6 +187,7 @@ with mlflow.start_run():
     # Link-prediction validation
     evaluator = Evaluator(name="ogbl-biokg")
     with torch.no_grad():
+        model.eval()
         z = model.encode(train_adj_t.to(args.device))
         results = []
         for et in range(num_relations):
@@ -227,6 +228,7 @@ with mlflow.start_run():
             )
 
     # CTOP validation
+    best_auc = 0.0
     ctop_ds = pd.read_hdf(args.finetuning_dataset, "ctop")
     train = ctop_ds[ctop_ds["subset"] == "train"]
     train_y = torch.tensor(train["result"].values).reshape(-1, 1)
@@ -251,6 +253,7 @@ with mlflow.start_run():
     )
     ls = nn.BCEWithLogitsLoss()
     for epoch in range(1000):
+        model.train()
         optimizer.zero_grad()
         z = model.encode(train_adj_t.to(args.device))
         embs_protein = torch.zeros(
@@ -300,9 +303,9 @@ with mlflow.start_run():
         )
         optimizer.step()
 
-        best_auc = 0.0
         # validation
         with torch.no_grad():
+            model.eval()
             z = model.encode(train_adj_t.to(args.device))
             embs_protein = torch.zeros(
                 (len(val), args.size1 + args.size2 + args.size3 + args.size4)
@@ -352,7 +355,9 @@ with mlflow.start_run():
                 val["result"][~val["result"].isna()],
                 probas.cpu().numpy()[~val["result"].isna()].reshape(-1),
             )
-            mlflow.log_metric(key="ft_auc_val", value=auc)
+            mlflow.log_metric(
+                key="ft_auc_val", value=auc, step=epoch + args.epochs
+            )
             if auc > best_auc:
                 torch.save(model, "best_auc_ft.pt")
                 best_auc = auc

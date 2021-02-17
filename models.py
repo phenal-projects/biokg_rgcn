@@ -46,6 +46,22 @@ class RGCNStack(nn.Module):
         return x3
 
 
+class Lookup(nn.Module):
+    def __init__(
+        self, initial_size, num_nodes, num_relations, *args, **kwargs
+    ):
+        super().__init__()
+        self.emb = nn.parameter.Parameter(
+            torch.ones((num_nodes, initial_size)), requires_grad=True
+        )
+        glorot_orthogonal(self.emb, 1)
+        self.drop = nn.Dropout(0.2)
+
+    def forward(self, adj_t, edge_types=None):
+        """Calculates embeddings"""
+        return self.drop(self.emb)
+
+
 class DistMult(nn.Module):
     def __init__(self, input_size, num_relations):
         super().__init__()
