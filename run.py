@@ -245,7 +245,7 @@ with mlflow.start_run():
         chain(
             model.parameters(), cl_head_1.parameters(), cl_head_2.parameters()
         ),
-        args.lr / 5.0,
+        args.lr,
     )
     ls = nn.BCEWithLogitsLoss()
     for epoch in range(1000):

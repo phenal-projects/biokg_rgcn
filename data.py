@@ -83,7 +83,7 @@ def load_dataset(path):
     # nodes of the same type should have idx within one continuous interval
 
     entity_type_dict = dict()
-    entity_types = set(triples[3].unique()) | set(triples[4].unique())
+    entity_types = set(triples[3]) | set(triples[4])
     for e in entity_types:
         entity_type_dict[e] = (
             min(
