@@ -73,6 +73,18 @@ def load_biokg():
     return train_edge, valid_edge, test_edge, entity_type_dict
 
 
+def min_or_inf(array):
+    if len(array) == 0:
+        return float("inf")
+    return array.min()
+
+
+def max_or_inf(array):
+    if len(array) == 0:
+        return -float("inf")
+    return array.max()
+
+
 def load_dataset(path):
     train_edge = dict()
     valid_edge = dict()
@@ -80,6 +92,8 @@ def load_dataset(path):
 
     # four row, (s, p, o, s_type, o_type, train/val/test)
     triples = np.load(path)
+    if triples.shape[1] == 6 and triples.shape[0] != 6:
+        triples = triples.T
     # nodes of the same type should have idx within one continuous interval
 
     entity_type_dict = dict()
@@ -87,12 +101,12 @@ def load_dataset(path):
     for e in entity_types:
         entity_type_dict[e] = (
             min(
-                triples[0, triples[3] == e].min(),
-                triples[2, triples[4] == e].min(),
+                min_or_inf(triples[0, triples[3] == e]),
+                max_or_inf(triples[2, triples[4] == e]),
             ),
             max(
-                triples[0, triples[3] == e].max(),
-                triples[2, triples[4] == e].max(),
+                min_or_inf(triples[0, triples[3] == e]),
+                max_or_inf(triples[2, triples[4] == e]),
             ),
         )
 
@@ -117,7 +131,9 @@ def load_dataset(path):
     valid_edge["head_neg"] = torch.stack(
         [
             torch.randint(
-                entity_type_dict[x][0], entity_type_dict[x][1], size=(500,)
+                entity_type_dict[x.item()][0],
+                entity_type_dict[x.item()][1],
+                size=(500,),
             )
             for x in valid_edge["head_type"]
         ]
@@ -125,16 +141,20 @@ def load_dataset(path):
     valid_edge["tail_neg"] = torch.stack(
         [
             torch.randint(
-                entity_type_dict[x][0], entity_type_dict[x][1], size=(500,)
+                entity_type_dict[x.item()][0],
+                entity_type_dict[x.item()][1],
+                size=(500,),
             )
-            for x in valid_edge["tail_neg"]
+            for x in valid_edge["tail_type"]
         ]
     )
 
     test_edge["head_neg"] = torch.stack(
         [
             torch.randint(
-                entity_type_dict[x][0], entity_type_dict[x][1], size=(500,)
+                entity_type_dict[x.item()][0],
+                entity_type_dict[x.item()][1],
+                size=(500,),
             )
             for x in test_edge["head_type"]
         ]
@@ -142,9 +162,11 @@ def load_dataset(path):
     test_edge["tail_neg"] = torch.stack(
         [
             torch.randint(
-                entity_type_dict[x][0], entity_type_dict[x][1], size=(500,)
+                entity_type_dict[x.item()][0],
+                entity_type_dict[x.item()][1],
+                size=(500,),
             )
-            for x in test_edge["tail_neg"]
+            for x in test_edge["tail_type"]
         ]
     )
     return train_edge, valid_edge, test_edge, entity_type_dict

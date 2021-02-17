@@ -258,12 +258,20 @@ with mlflow.start_run():
             (len(train), args.size1 + args.size2 + args.size3 + args.size4)
         ).to(args.device)
         min_mean_max = torch.zeros((len(train)), 3).to(args.device)
-        neutral_protein = z[
-            entity_type_dict["protein"][0] : entity_type_dict["protein"][1]
-        ].mean(0)
-        neutral_disease = z[
-            entity_type_dict["disease"][0] : entity_type_dict["disease"][1]
-        ].mean(0)
+        if args.data == "biokg":
+            neutral_protein = z[
+                entity_type_dict["protein"][0] : entity_type_dict["protein"][1]
+            ].mean(0)
+            neutral_disease = z[
+                entity_type_dict["disease"][0] : entity_type_dict["disease"][1]
+            ].mean(0)
+        else:
+            neutral_protein = z[
+                entity_type_dict[0][0] : entity_type_dict[0][1]
+            ].mean(0)
+            neutral_disease = z[
+                entity_type_dict[1][0] : entity_type_dict[1][1]
+            ].mean(0)
         for i, (_, idx) in enumerate(train.iterrows()):
             if (len(idx["protein"]) > 0) and (len(idx["disease"]) > 0):
                 embs_protein[i] = z[idx["protein"]].mean(0)
@@ -309,16 +317,24 @@ with mlflow.start_run():
                     )
                 ).to(args.device)
                 min_mean_max = torch.zeros((len(test)), 3).to(args.device)
-                neutral_protein = z[
-                    entity_type_dict["protein"][0] : entity_type_dict[
-                        "protein"
-                    ][1]
-                ].mean(0)
-                neutral_disease = z[
-                    entity_type_dict["disease"][0] : entity_type_dict[
-                        "disease"
-                    ][1]
-                ].mean(0)
+                if args.data == "biokg":
+                    neutral_protein = z[
+                        entity_type_dict["protein"][0] : entity_type_dict[
+                            "protein"
+                        ][1]
+                    ].mean(0)
+                    neutral_disease = z[
+                        entity_type_dict["disease"][0] : entity_type_dict[
+                            "disease"
+                        ][1]
+                    ].mean(0)
+                else:
+                    neutral_protein = z[
+                        entity_type_dict[0][0] : entity_type_dict[0][1]
+                    ].mean(0)
+                    neutral_disease = z[
+                        entity_type_dict[1][0] : entity_type_dict[1][1]
+                    ].mean(0)
                 for i, (_, idx) in enumerate(test.iterrows()):
                     if (len(idx["protein"]) > 0) and (len(idx["disease"]) > 0):
                         embs_protein[i] = z[idx["protein"]].mean(0)
