@@ -31,7 +31,7 @@ class RGCNStack(nn.Module):
         ).to(device1)
         self.conv2 = gnn.RGCNConv(
             middle_size_1, middle_size_2, num_relations, num_bases=12,
-        ).to(device2)
+        ).to(device1)
         self.conv3 = gnn.RGCNConv(
             middle_size_2,
             output_size - middle_size_2 - middle_size_1 - initial_size,
@@ -46,15 +46,16 @@ class RGCNStack(nn.Module):
         if edge_types is not None:
             edge_types = edge_types.to(self.device1)
         x1 = F.relu(self.conv1(self.emb, adj_t, edge_types))
+        x2 = F.relu(self.conv2(x1, adj_t, edge_types))
 
         adj_t = adj_t.to(self.device2)
-        x1 = x1.to(self.device2)
         if edge_types is not None:
             edge_types = edge_types.to(self.device2)
 
-        x2 = F.relu(self.conv2(x1, adj_t, edge_types))
+        x2 = x2.to(self.device2)
         x3 = F.relu(self.conv3(x2, adj_t, edge_types))
 
+        x1 = x1.to(self.device2)
         emb = self.emb.to(self.device2)
         x3 = torch.cat((x3, x2, x1, emb), 1)
         x3 = self.drop(x3)
