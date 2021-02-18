@@ -153,7 +153,9 @@ decoder = models.DistMult(
     args.size1 + args.size2 + args.size3 + args.size4, num_relations
 )
 model = gnn.GAE(encoder, decoder).to(args.device)
-optimizer = opt.Adam(model.parameters(), args.lr, weight_decay=args.wd)
+optimizer = opt.SGD(
+    model.parameters(), args.lr, weight_decay=args.wd, momentum=0.9
+)
 
 best_loss = 0.5
 best_auc = 0.0
@@ -251,11 +253,12 @@ with mlflow.start_run():
     ).to(args.device)
 
     # Optim and loss
-    optimizer = opt.Adam(
+    optimizer = opt.SGD(
         chain(
             model.parameters(), cl_head_1.parameters(), cl_head_2.parameters()
         ),
         args.lr,
+        momentum=0.9,
     )
     ls = nn.BCEWithLogitsLoss()
 
