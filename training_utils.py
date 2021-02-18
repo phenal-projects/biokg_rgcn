@@ -64,7 +64,6 @@ def logloss(pos_scores, neg_scores, adversarial_temperature=1.0):
 def train_step(
     model,
     optimizer,
-    device,
     train_adj_t,
     pos_val,
     neg_val,
@@ -72,9 +71,9 @@ def train_step(
     relation_to_entity,
     edge_types_to_train,
     neg_sample_size,
+    device,
 ):
     train_pos_adj, dropmask = drop_edges(train_adj_t)
-    train_pos_adj = train_pos_adj.to(device)
 
     model.train()
     optimizer.zero_grad()
@@ -138,7 +137,7 @@ def ft_inference(
     df,
     device,
 ):
-    z = model.encode(train_adj_t.to(device))
+    z = model.encode(train_adj_t)
     embs_protein = torch.zeros((len(df), z.shape[1])).to(device)
     embs_disease = torch.zeros((len(df), z.shape[1])).to(device)
     min_mean_max = torch.zeros((len(df)), 3).to(device)

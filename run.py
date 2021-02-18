@@ -61,7 +61,10 @@ parser.add_argument(
     "--epochs", help="set the number of epochs to train", type=int, default=400
 )
 parser.add_argument(
-    "--device", help="the device to train on", type=str, default="cpu"
+    "--device1", help="the device to train on, part 1", type=str, default="cpu"
+)
+parser.add_argument(
+    "--device2", help="the device to train on, part 2", type=str, default="cpu"
 )
 parser.add_argument(
     "--data",
@@ -148,11 +151,13 @@ encoder = models.RGCNStack(
     args.size3,
     num_nodes,
     num_relations,
+    args.device1,
+    args.device2,
 )
 decoder = models.DistMult(
     args.size1 + args.size2 + args.size3 + args.size4, num_relations
-)
-model = gnn.GAE(encoder, decoder).to(args.device)
+).to(args.device2)
+model = gnn.GAE(encoder, decoder)
 optimizer = opt.SGD(
     model.parameters(), args.lr, weight_decay=args.wd, momentum=0.9
 )
@@ -165,7 +170,6 @@ with mlflow.start_run():
         model, auc, ap, loss = train_step(
             model,
             optimizer,
-            args.device,
             train_adj_t,
             pos_val,
             neg_val,
@@ -173,6 +177,7 @@ with mlflow.start_run():
             relation_to_entity,
             list(range(num_relations)),
             args.negsize,
+            args.device2,
         )
         if auc > best_auc:
             torch.save(model, "best_auc.pt")
@@ -190,7 +195,7 @@ with mlflow.start_run():
     evaluator = Evaluator(name="ogbl-biokg")
     with torch.no_grad():
         model.eval()
-        z = model.encode(train_adj_t.to(args.device))
+        z = model.encode(train_adj_t)
         results = []
         for et in range(num_relations):
             subresults = []
@@ -201,7 +206,7 @@ with mlflow.start_run():
                 )
             )
             subresults.append(
-                model.decoder(z, pos_val.to(args.device), et)
+                model.decoder(z, pos_val.to(args.device2), et)
                 .detach()
                 .cpu()
                 .numpy()
@@ -213,7 +218,7 @@ with mlflow.start_run():
                 subresults.append(
                     model.decoder(
                         z,
-                        torch.stack((pos_val[0], tail_neg)).to(args.device),
+                        torch.stack((pos_val[0], tail_neg)).to(args.device2),
                         et,
                     )
                     .detach()
@@ -226,7 +231,8 @@ with mlflow.start_run():
                 {"y_pred_pos": scores[:, 0], "y_pred_neg": scores[:, 1:]}
             )
             mlflow.log_metric(
-                key="test_lp_mrr", value=eval_results["mrr_list"].mean()
+                key="test_lp_mrr_{}".format(et),
+                value=eval_results["mrr_list"].mean(),
             )
 
     # CTOP validation
@@ -247,10 +253,10 @@ with mlflow.start_run():
         nn.ReLU(),
         nn.Linear(128, 13),
         nn.ReLU(),
-    ).to(args.device)
+    ).to(args.device2)
     cl_head_2 = nn.Sequential(
         nn.Linear(16, 32), nn.ReLU(), nn.Linear(32, 1),
-    ).to(args.device)
+    ).to(args.device2)
 
     # Optim and loss
     optimizer = opt.SGD(
@@ -282,7 +288,7 @@ with mlflow.start_run():
             entity_type_dict[1][1],
         )
 
-    for epoch in range(1000):
+    for epoch in range(2):
         model.train()
         optimizer.zero_grad()
         probas = ft_inference(
@@ -293,9 +299,9 @@ with mlflow.start_run():
             protein_bounds,
             disease_bounds,
             train,
-            args.device,
+            args.device2,
         )
-        loss = ls(probas, train_y.to(args.device))
+        loss = ls(probas, train_y.to(args.device2))
         loss.backward()
         mlflow.log_metric(
             key="ft_loss", value=loss.item(), step=epoch + args.epochs
@@ -313,7 +319,7 @@ with mlflow.start_run():
                 protein_bounds,
                 disease_bounds,
                 val,
-                args.device,
+                args.device2,
             )
             auc = roc_auc_score(
                 val["result"][~val["result"].isna()],
@@ -340,7 +346,7 @@ with mlflow.start_run():
                     protein_bounds,
                     disease_bounds,
                     test,
-                    args.device,
+                    args.device2,
                 )
                 if len(test["result"][~test["result"].isna()]) > 0:
                     auc, ap = (
