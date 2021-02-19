@@ -37,7 +37,7 @@ class RGCNStack(nn.Module):
             output_size - middle_size_2 - middle_size_1 - initial_size,
             num_relations,
             num_bases=12,
-        ).to(device2)
+        ).to(device1)
         self.drop = nn.Dropout(0.2)
 
     def forward(self, adj_t, edge_types=None):
