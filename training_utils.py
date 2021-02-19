@@ -79,7 +79,6 @@ def train_step(
     optimizer.zero_grad()
     z = model.encode(train_pos_adj)
 
-    total_edges = 0.0
     pos_scores = list()
     neg_scores = list()
     for edge_type in edge_types_to_train:
@@ -117,7 +116,7 @@ def train_step(
                         z, neg_edges.to(device), edge_type, sigmoid=False
                     )
                 )
-    l, _ = logloss(torch.cat(pos_scores), torch.cat(neg_scores))
+    l, w = logloss(torch.cat(pos_scores), torch.cat(neg_scores))
     l.backward()
 
     nn.utils.clip_grad_norm_(model.parameters(), 1)
@@ -128,7 +127,7 @@ def train_step(
         auc, ap = test(
             z, model.decoder, 0, pos_val.to(device), neg_val.to(device),
         )
-    return model, auc, ap, l.item() / total_edges
+    return model, auc, ap, l.item() / w
 
 
 def ft_inference(
