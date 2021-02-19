@@ -79,8 +79,9 @@ def train_step(
     optimizer.zero_grad()
     z = model.encode(train_pos_adj)
 
-    loss = 0
     total_edges = 0.0
+    pos_scores = list()
+    neg_scores = list()
     for edge_type in edge_types_to_train:
         pos_edges = torch.stack(
             (
@@ -93,8 +94,10 @@ def train_step(
             )
         )
         if pos_edges.shape[-1] != 0:
-            pos_scores = model.decoder(
-                z, pos_edges.to(device), edge_type, sigmoid=False
+            pos_scores.append(
+                model.decoder(
+                    z, pos_edges.to(device), edge_type, sigmoid=False
+                )
             )
             possible_tail_nodes = entity_type_dict[
                 relation_to_entity["tail"][edge_type]
@@ -102,7 +105,6 @@ def train_step(
             possible_head_nodes = entity_type_dict[
                 relation_to_entity["head"][edge_type]
             ]
-            neg_scores = list()
             for _ in range(neg_sample_size):
                 neg_edges = negative_sample(
                     pos_edges,
@@ -115,10 +117,8 @@ def train_step(
                         z, neg_edges.to(device), edge_type, sigmoid=False
                     )
                 )
-            l, w = logloss(pos_scores, torch.cat(neg_scores))
-            loss += l
-            total_edges += w
-    loss.backward()
+    l, _ = logloss(torch.cat(pos_scores), torch.cat(neg_scores))
+    l.backward()
 
     nn.utils.clip_grad_norm_(model.parameters(), 1)
     optimizer.step()
@@ -128,7 +128,7 @@ def train_step(
         auc, ap = test(
             z, model.decoder, 0, pos_val.to(device), neg_val.to(device),
         )
-    return model, auc, ap, loss.item() / total_edges
+    return model, auc, ap, l.item() / total_edges
 
 
 def ft_inference(
