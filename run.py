@@ -44,7 +44,7 @@ parser.add_argument(
     type=int,
     default=52,
 )
-parser.add_argument("--negsize", help="negsize/possize", type=float, default=1)
+parser.add_argument("--negsize", help="negsize/possize", type=int, default=1)
 parser.add_argument(
     "--adv",
     help="set the adversarial temperature for the negative part of the loss",

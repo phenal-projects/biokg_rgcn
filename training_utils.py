@@ -102,16 +102,20 @@ def train_step(
             possible_head_nodes = entity_type_dict[
                 relation_to_entity["head"][edge_type]
             ]
-            neg_edges = negative_sample(
-                pos_edges,
-                *possible_head_nodes,
-                *possible_tail_nodes,
-                int(len(pos_edges[0]) * neg_sample_size)
-            )
-            neg_scores = model.decoder(
-                z, neg_edges.to(device), edge_type, sigmoid=False
-            )
-            l, w = logloss(pos_scores, neg_scores)
+            neg_scores = list()
+            for _ in range(neg_sample_size):
+                neg_edges = negative_sample(
+                    pos_edges,
+                    *possible_head_nodes,
+                    *possible_tail_nodes,
+                    int(len(pos_edges[0]))
+                )
+                neg_scores.append(
+                    model.decoder(
+                        z, neg_edges.to(device), edge_type, sigmoid=False
+                    )
+                )
+            l, w = logloss(pos_scores, torch.cat(neg_scores))
             loss += l
             total_edges += w
     loss.backward()

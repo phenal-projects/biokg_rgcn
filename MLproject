@@ -11,7 +11,7 @@ entry_points:
       size4: {type: int, default: 32}
       epochs: {type: int, default: 20}
       seed: {type: int, default: 0}
-      neg: {type: float, default: 1.0}
+      neg: {type: int, default: 1}
       adv: {type: float, default: 1.0}
       lr: {type: float, default: 0.005}
       wd: {type: float, default: 0.0001}
