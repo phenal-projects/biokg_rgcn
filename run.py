@@ -167,7 +167,8 @@ if args.finetuning_model == "None":
     model = gnn.GAE(encoder, decoder)
 else:
     model = torch.load(args.finetuning_model)
-    model.change_devices(args.device1, args.device2)
+    model.encoder.change_devices(args.device1, args.device2)
+    model.decoder.to(args.device2)
 optimizer = opt.Adam(
     model.parameters(), args.lr, weight_decay=args.wd, amsgrad=True
 )
