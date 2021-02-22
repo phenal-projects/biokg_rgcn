@@ -16,10 +16,8 @@ class RGCNStack(nn.Module):
         num_relations,
         device1,
         device2,
-        *args,
-        **kwargs
     ):
-        super().__init__(args, kwargs)
+        super().__init__()
         self.device1 = device1
         self.device2 = device2
         self.emb = nn.parameter.Parameter(
