@@ -4,7 +4,7 @@ entry_points:
   main:
     parameters:
       ctop_dataset: path
-      pt_model: path
+      pt_model: str
       graph_dataset: str
       size1: {type: int, default: 32}
       size2: {type: int, default: 32}
