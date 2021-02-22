@@ -4,6 +4,7 @@ entry_points:
   main:
     parameters:
       ctop_dataset: path
+      pt_model: path
       graph_dataset: str
       size1: {type: int, default: 32}
       size2: {type: int, default: 32}
@@ -17,4 +18,4 @@ entry_points:
       wd: {type: float, default: 0.0001}
       device1: {type: str, default: "cpu"}
       device2: {type: str, default: "cpu"}
-    command: "python run.py --data {graph_dataset} --finetuning_dataset {ctop_dataset} --device1 {device1} --device2 {device2} --seed {seed} --size1 {size1} --size2 {size2} --size3 {size3} --size4 {size4} --epochs {epochs} --lr {lr} --wd {wd} --adv {adv} --negsize {neg}"
+    command: "python run.py --finetuning_model {pt_model} --data {graph_dataset} --finetuning_dataset {ctop_dataset} --device1 {device1} --device2 {device2} --seed {seed} --size1 {size1} --size2 {size2} --size3 {size3} --size4 {size4} --epochs {epochs} --lr {lr} --wd {wd} --adv {adv} --negsize {neg}"
