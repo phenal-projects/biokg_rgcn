@@ -16,8 +16,6 @@ class RGCNStack(nn.Module):
         num_relations,
         device1,
         device2,
-        *args,
-        **kwargs
     ):
         super().__init__()
         self.device1 = device1
@@ -30,7 +28,7 @@ class RGCNStack(nn.Module):
             initial_size, middle_size_1, num_relations, num_bases=12
         ).to(device1)
         self.conv2 = gnn.RGCNConv(
-            middle_size_1, middle_size_2, num_relations, num_bases=12,
+            middle_size_1, middle_size_2, num_relations, num_bases=12
         ).to(device1)
         self.conv3 = gnn.RGCNConv(
             middle_size_2,
@@ -56,6 +54,11 @@ class RGCNStack(nn.Module):
         x3 = torch.cat((x3, x2, x1, emb), 1)
         x3 = self.drop(x3)
         return x3
+
+    def change_devices(self, device1, device2):
+        self.device1 = device1
+        self.device2 = device2
+        self.to(device1)
 
 
 class Lookup(nn.Module):

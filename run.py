@@ -90,6 +90,12 @@ parser.add_argument(
     type=str,
     default="None",
 )
+parser.add_argument(
+    "--finetuning_model",
+    help="a path to a model to finetune",
+    type=str,
+    default="None",
+)
 args = parser.parse_args()
 
 
@@ -143,21 +149,26 @@ neg_val = torch.stack(
     )
 )
 
-# Model
-encoder = models.RGCNStack(
-    args.size1,
-    args.size1 + args.size2 + args.size3 + args.size4,
-    args.size2,
-    args.size3,
-    num_nodes,
-    num_relations,
-    args.device1,
-    args.device2,
-)
-decoder = models.DistMult(
-    args.size1 + args.size2 + args.size3 + args.size4, num_relations
-).to(args.device2)
-model = gnn.GAE(encoder, decoder)
+if args.finetuning_model == "None":
+    # Model
+    encoder = models.RGCNStack(
+        args.size1,
+        args.size1 + args.size2 + args.size3 + args.size4,
+        args.size2,
+        args.size3,
+        num_nodes,
+        num_relations,
+        args.device1,
+        args.device2,
+    )
+    decoder = models.DistMult(
+        args.size1 + args.size2 + args.size3 + args.size4, num_relations
+    ).to(args.device2)
+    model = gnn.GAE(encoder, decoder)
+else:
+    model = torch.load(args.finetuning_model)
+    model.encoder.change_devices(args.device1, args.device2)
+    model.decoder.to(args.device2)
 optimizer = opt.Adam(
     model.parameters(), args.lr, weight_decay=args.wd, amsgrad=True
 )
@@ -255,7 +266,7 @@ with mlflow.start_run():
         nn.ReLU(),
     ).to(args.device2)
     cl_head_2 = nn.Sequential(
-        nn.Linear(16, 32), nn.ReLU(), nn.Linear(32, 1),
+        nn.Linear(16, 32), nn.ReLU(), nn.Linear(32, 1)
     ).to(args.device2)
 
     # Optim and loss
@@ -279,16 +290,10 @@ with mlflow.start_run():
             entity_type_dict["disease"][1],
         )
     else:
-        protein_bounds = (
-            entity_type_dict[0][0],
-            entity_type_dict[0][1],
-        )
-        disease_bounds = (
-            entity_type_dict[1][0],
-            entity_type_dict[1][1],
-        )
+        protein_bounds = (entity_type_dict[0][0], entity_type_dict[0][1])
+        disease_bounds = (entity_type_dict[1][0], entity_type_dict[1][1])
 
-    for epoch in range(2):
+    for epoch in range(300):
         model.train()
         optimizer.zero_grad()
         probas = ft_inference(
